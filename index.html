@@ -145,7 +145,11 @@
         }).then((instance) => {
              window.unityInstance = instance;
              window._unityInstance = instance; 
+            window.gameInstance    = instance;
             loadingBar.style.display = "none";
+         if (typeof Module !== "undefined" && Module) {
+            Module.SendMessage = instance.SendMessage.bind(instance);
+              }    
             if (fullscreenBtn) {
                 fullscreenBtn.onclick = () => unityInstance.SetFullscreen(1);
             }
