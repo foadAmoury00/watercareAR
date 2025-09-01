@@ -1,50 +1,171 @@
 <!DOCTYPE html>
 <html lang="en-us">
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>Unity WebGL Player | WaterCare</title>
-  </head>
-  <body style="text-align: center; padding: 0; border: 0; margin: 0;">
-    <canvas id="unity-canvas" width=960 height=600 style="width: 960px; height: 600px; background: #231F20"></canvas>
-<<<<<<< HEAD
-    <script src="Build/WaterCareUnityBuild.loader.js"></script>
-=======
-    <script src="Build/watercareAR.loader.js"></script>
->>>>>>> parent of 0162204 (hiding the iframe only)
-    <script>
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // Mobile device style: fill the whole browser client area with the game canvas:
-        var meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
-        document.getElementsByTagName('head')[0].appendChild(meta);
+    <link rel="shortcut icon" href="TemplateData/favicon.ico" />
+    <link rel="stylesheet" href="TemplateData/style.css" />
 
-        var canvas = document.querySelector("#unity-canvas");
-        canvas.style.width = "100%";
-        canvas.style.height = "100%";
-        canvas.style.position = "fixed";
+    <!-- Make the canvas truly full-screen and kill scrollbars -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <style>
+        html, body {
+            margin: 0; padding: 0; height: 100%;
+            background: #000; overflow: hidden;
+        }
+        /* Full-viewport container */
+        #unity-container {
+            position: fixed; inset: 0;
+            width: 100vw;
+            height: 100dvh; /* handles iOS dynamic toolbar; falls back to 100vh where unsupported */
+        }
+        /* Full-viewport canvas */
+        #unity-canvas {
+            width: 100%; height: 100%; display: block;
+            touch-action: none; /* prevents pull-to-refresh / gestures on mobile */
+        }
+        /* Keep footer/loading positioned but don’t let them push layout */
+        #unity-footer, #unity-loading-bar, #unity-warning {
+            position: absolute; left: 0; right: 0;
+            pointer-events: none;
+        }
 
-        document.body.style.textAlign = "left";
-      }
+        /* Iframe overlay on top of Unity */
+        #iframe-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,.7);
+            z-index: 9999;
+            justify-content: center; align-items: center;
+        }
+        #iframe-overlay .close-btn {
+            position: absolute; top: 20px; right: 20px;
+            z-index: 10000; background: #198754; color: #fff;
+            border: none; padding: 10px 14px; font-weight: 700; cursor: pointer;
+            border-radius: 8px;
+        }
+        #iframe-overlay iframe {
+            width: 100%; height: 100%; border: none; display: block;
+        }
+    </style>
+</head>
+<body>
 
-      createUnityInstance(document.querySelector("#unity-canvas"), {
-<<<<<<< HEAD
-        dataUrl: "Build/WaterCareUnityBuild.data",
-        frameworkUrl: "Build/WaterCareUnityBuild.framework.js",
-        codeUrl: "Build/WaterCareUnityBuild.wasm",
-=======
-        dataUrl: "Build/watercareAR.data",
-        frameworkUrl: "Build/watercareAR.framework.js",
-        codeUrl: "Build/watercareAR.wasm",
->>>>>>> parent of 0162204 (hiding the iframe only)
+<div id="unity-container" class="unity-desktop">
+    <!-- IMPORTANT: remove fixed width/height attributes so CSS can control size -->
+    <canvas id="unity-canvas"></canvas>
+
+    <div id="unity-loading-bar">
+        <div id="unity-logo"></div>
+        <div id="unity-progress-bar-empty">
+            <div id="unity-progress-bar-full"></div>
+        </div>
+    </div>
+
+    <div id="unity-warning"></div>
+
+    <div id="unity-footer">
+        <div id="unity-webgl-logo"></div>
+        <div id="unity-fullscreen-button"></div>
+        <div id="unity-build-title"></div>
+    </div>
+</div>
+
+<!-- Hidden iframe overlay -->
+<div id="iframe-overlay">
+    <button class="close-btn" onclick="closeIframe()">✖</button>
+    <iframe
+            id="info-frame"
+            src="https://ehabayman5dvr.github.io/PukekoAR/"
+            allow="camera; microphone; xr-spatial-tracking; accelerometer; gyroscope">
+    </iframe>
+</div>
+
+<script>
+    const container       = document.querySelector("#unity-container");
+    const canvas          = document.querySelector("#unity-canvas");
+    const loadingBar      = document.querySelector("#unity-loading-bar");
+    const progressBarFull = document.querySelector("#unity-progress-bar-full");
+    const fullscreenBtn   = document.querySelector("#unity-fullscreen-button");
+    const warningBanner   = document.querySelector("#unity-warning");
+
+    // Overlay controls (can be called from a WebGL .jslib or ExternalEval)
+    function openIframe () { document.getElementById("iframe-overlay").style.display = "flex"; }
+    function closeIframe() { document.getElementById("iframe-overlay").style.display = "none"; }
+    // Expose a global for convenience
+    window.openIframe = openIframe;
+
+    // If you are calling [DllImport("__Internal")] OpenIframeJS() from C# via a .jslib,
+    // that plugin can simply call: window.openIframe();
+    // Defining this here does NOT satisfy DllImport; use a .jslib for that.
+    function OpenIframeJS(){ openIframe(); }
+
+    function unityShowBanner(msg, type) {
+        function update() { warningBanner.style.display = warningBanner.children.length ? 'block' : 'none'; }
+        const div = document.createElement('div');
+        div.innerHTML = msg;
+        div.style = (type === 'error')
+            ? 'background:red;padding:10px;'
+            : 'background:yellow;padding:10px;';
+        warningBanner.appendChild(div);
+        if (type !== 'error') setTimeout(() => { warningBanner.removeChild(div); update(); }, 5000);
+        update();
+    }
+
+    const buildUrl  = "Build";
+    const loaderUrl = buildUrl + "/watercoreAR.loader.js";
+    const config = {
+        dataUrl:        buildUrl + "/watercoreAR.data",
+        frameworkUrl:   buildUrl + "/watercoreAR.framework.js",
+        codeUrl:        buildUrl + "/watercoreAR.wasm",
         streamingAssetsUrl: "StreamingAssets",
-        companyName: "5dvr",
-        productName: "WaterCare",
+        companyName:    "5dvr",
+        productName:    "WaterCare",
         productVersion: "0.1",
-        // matchWebGLToCanvasSize: false, // Uncomment this to separately control WebGL canvas render size and DOM element size.
-        // devicePixelRatio: 1, // Uncomment this to override low DPI rendering on high DPI displays.
-      });
-    </script>
-  </body>
+        showBanner:     unityShowBanner,
+
+        // Keep render target matched to CSS size (best for full-viewport)
+        // (true by default; included for clarity)
+        matchWebGLToCanvasSize: true,
+
+        // Optional: cap resolution on mobile for perf (set to 1 or 1.5)
+        // devicePixelRatio: 1
+    };
+
+    // No desktop/mobile branches — always fill the viewport via CSS above.
+
+    loadingBar.style.display = "block";
+
+    // Load the Unity loader
+    const script = document.createElement("script");
+    script.src = loaderUrl;
+    script.onload = () => {
+        createUnityInstance(canvas, config, (progress) => {
+            progressBarFull.style.width = (100 * progress) + "%";
+        }).then((instance) => {
+            window.unityInstance = instance;
+            window._unityInstance = instance;
+            window.gameInstance    = instance;
+            loadingBar.style.display = "none";
+            if (typeof Module !== "undefined" && Module) {
+                Module.SendMessage = instance.SendMessage.bind(instance);
+            }
+            if (fullscreenBtn) {
+                fullscreenBtn.onclick = () => unityInstance.SetFullscreen(1);
+            }
+        }).catch((message) => {
+            alert(message);
+        });
+    };
+    document.body.appendChild(script);
+
+    // Handle rotations / UI chrome changes on mobile (iOS/Android)
+    window.addEventListener('resize', () => {
+        // With matchWebGLToCanvasSize=true and CSS 100%, Unity resizes automatically.
+        // This handler exists just to ensure layout recalcs after address bar changes.
+        canvas.style.width  = '100%';
+        canvas.style.height = '100%';
+    });
+</script>
+</body>
 </html>
